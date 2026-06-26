@@ -161,14 +161,34 @@ resource "aws_iam_role" "ec2_role" {
 }
 
 data "aws_iam_policy_document" "dynamodb_access_policy" {
+
   statement {
     effect = "Allow"
+
     actions = [
       "dynamodb:PutItem",
       "dynamodb:Scan"
     ]
+
     resources = [
       aws_dynamodb_table.products_table.arn
+    ]
+  }
+
+  statement {
+    effect = "Allow"
+
+    actions = [
+      "s3:PutObject",
+      "s3:GetObject",
+      "s3:ListBucket",
+      "s3:DeleteObject",
+      "s3:GetObjectVersion"
+    ]
+
+    resources = [
+      aws_s3_bucket.product_images.arn,
+      "${aws_s3_bucket.product_images.arn}/*"
     ]
   }
 }
@@ -182,4 +202,48 @@ resource "aws_iam_role_policy" "dynamodb_access" {
 resource "aws_iam_instance_profile" "ec2_instance_profile" {
   name = "${local.team_name}-ec2-profile"
   role = aws_iam_role.ec2_role.name
+}
+
+
+resource "aws_s3_bucket" "product_images" {
+  bucket = "${local.team_name}-product-images"
+
+  tags = {
+    Name = "${local.team_name}-product-images"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "public_access" {
+  bucket = aws_s3_bucket.product_images.id
+
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
+}
+
+resource "aws_s3_bucket_policy" "public_policy" {
+  bucket = aws_s3_bucket.product_images.id
+
+  depends_on = [
+    aws_s3_bucket_public_access_block.public_access
+  ]
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+
+    Statement = [
+      {
+        Sid       = "PublicRead"
+        Effect    = "Allow"
+        Principal = "*"
+
+        Action = [
+          "s3:GetObject"
+        ]
+
+        Resource = "${aws_s3_bucket.product_images.arn}/*"
+      }
+    ]
+  })
 }
