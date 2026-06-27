@@ -1,30 +1,8 @@
-data "aws_ami" "ubuntu" {
-  most_recent = true
-  
-  # we are retrieving a specific version of Ubuntu
-  filter {
-    name   = "name"
-    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
-  }
-  
-  # with a specific virtualization type,
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
-  }
-  
-  #  from a specific AWS account that decided to make the AMI publicly available
-  owners = ["099720109477"] # Canonical
-}
 
-resource "aws_instance" "web" {
+module "ec2_web_instance" {
+  source = "./modules/ec2"
   iam_instance_profile = aws_iam_instance_profile.ec2_instance_profile.name
-  vpc_security_group_ids      = [aws_security_group.allow_ssh_http.id]
-  ami           = data.aws_ami.ubuntu.id
-  instance_type = "t3.micro"
-
-  key_name = aws_key_pair.deployer.key_name
-  associate_public_ip_address = true  
+  keypair_name = aws_key_pair.deployer.key_name
   user_data = <<-EOF
                 #!/bin/bash
                 apt update -y
@@ -63,11 +41,7 @@ resource "aws_instance" "web" {
                 # Restart NGINX
                 systemctl restart nginx
     EOF
-
-              
-  tags = {
-    Name = "${local.team_name}-products-instance"
-  }
+    ec2_instance_name = "${local.team_name}-products-instance"
 }
 
 
@@ -89,36 +63,6 @@ resource "local_file" "public_key" {
 resource "aws_key_pair" "deployer" {
   key_name   = "${local.team_name}-ubuntu-ssh-key"
   public_key = tls_private_key.ssh_key.public_key_openssh
-}
-
-resource "aws_security_group" "allow_ssh_http" {
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-  
-  # FILL THIS UP
-  # so that security groups are easy to find...
-  tags = {
-    Name = "${local.team_name}-allow-ssh-http"
-  }
 }
 
 resource "aws_dynamodb_table" "products_table" {
