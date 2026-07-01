@@ -15,7 +15,8 @@ module "ec2_web_instance" {
                 cd /home/ubuntu/app
                 
                 export AWS_REGION=${local.assigned_aws_region}
-                export DYNAMODB_TABLE_NAME=${aws_dynamodb_table.products_table.name}
+                export DYNAMODB_TABLE_NAME=${module.dynamodb.table_name}
+                export S3_BUCKET_NAME=${module.s3.bucket_name}
   
                 # Install Python dependencies
                 pip3 install --upgrade pip
@@ -67,26 +68,7 @@ resource "aws_key_pair" "deployer" {
   public_key = tls_private_key.ssh_key.public_key_openssh
 }
 
-resource "aws_dynamodb_table" "products_table" {
-  name           = "${local.team_name}-products-table"
-  billing_mode     = "PAY_PER_REQUEST"
-  hash_key       = "product_id"
 
-  attribute {
-    name = "product_id"
-    type = "S"
-  }
-
-  ttl {
-    attribute_name = "TimeToExist"
-    enabled        = true
-  }
-
-  tags = {
-    Name        = "${local.team_name}-products-table"
-    Environment = "production"
-  }
-}
 
 data "aws_iam_policy_document" "ec2_assume_role_policy" {
   statement {
@@ -114,7 +96,19 @@ data "aws_iam_policy_document" "dynamodb_access_policy" {
       "dynamodb:Scan"
     ]
     resources = [
-      aws_dynamodb_table.products_table.arn
+      module.dynamodb.table_arn
+    ]
+  }
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "s3:PutObject",
+      "s3:GetObject",
+      "s3:DeleteObject"
+    ]
+    resources = [
+      "${module.s3.bucket_arn}/*"
     ]
   }
 }
@@ -141,7 +135,18 @@ module "ec2_instance_profile" {
         "dynamodb:Scan"
       ]
       resources = [
-        aws_dynamodb_table.products_table.arn
+        module.dynamodb.table_arn
+      ]
+    },
+    {
+      effect = "Allow",
+      actions = [
+        "s3:PutObject",
+        "s3:GetObject",
+        "s3:DeleteObject"
+      ]
+      resources = [
+        "${module.s3.bucket_arn}/*"
       ]
     }
   ]
@@ -149,4 +154,15 @@ module "ec2_instance_profile" {
 
 module "aws_network" {
   source = "./modules/vpc"
+}
+
+module "dynamodb" {
+  source = "./modules/dynamodb"
+
+  table_name = "${local.team_name}-products-table"
+}
+
+module "s3" {
+  source      = "./modules/s3"
+  bucket_name = "${local.team_name}-product-images"
 }
